@@ -1,5 +1,6 @@
 import { log } from "../core/logger.js";
 import { imageState } from "./config.js";
+import { ColorUtils } from "./color-utils.js";
 
 /**
  * Obtener datos completos de píxeles para guardar
@@ -66,10 +67,11 @@ export function exportForGuard(filename = null) {
         height: maxY - minY + 1,
         pixelCount: drawnPixels.length
       },
-      // Mapa de píxeles original en formato Guard
+      // Mapa de píxeles original en formato Guard con colores normalizados
       originalPixels: drawnPixels.map(pixel => {
         const globalX = (pixel.tileX * 1000) + pixel.localX;
         const globalY = (pixel.tileY * 1000) + pixel.localY;
+        const normalizedColor = ColorUtils.normalizeColor(pixel.color);
         
         return {
           key: `${globalX},${globalY}`,
@@ -79,20 +81,24 @@ export function exportForGuard(filename = null) {
           localY: pixel.localY,
           tileX: pixel.tileX,
           tileY: pixel.tileY,
-          colorId: pixel.color.id,
-          r: pixel.color.r || 255,
-          g: pixel.color.g || 255,
-          b: pixel.color.b || 255,
+          colorId: normalizedColor ? normalizedColor.id : (pixel.color ? pixel.color.id : null),
+          r: normalizedColor ? normalizedColor.r : (pixel.color ? pixel.color.r : 255),
+          g: normalizedColor ? normalizedColor.g : (pixel.color ? pixel.color.g : 255),
+          b: normalizedColor ? normalizedColor.b : (pixel.color ? pixel.color.b : 255),
           paintedAt: pixel.paintedAt || Date.now()
         };
       }),
-      // Colores disponibles
-      colors: imageState.availableColors.map(color => ({
-        id: color.id,
-        r: color.r,
-        g: color.g,
-        b: color.b
-      })),
+      // Colores disponibles normalizados
+      colors: imageState.availableColors.map(color => {
+        const normalizedColor = ColorUtils.normalizeColor(color);
+        return {
+          id: normalizedColor ? normalizedColor.id : color.id,
+          r: normalizedColor ? normalizedColor.r : color.r,
+          g: normalizedColor ? normalizedColor.g : color.g,
+          b: normalizedColor ? normalizedColor.b : color.b,
+          name: normalizedColor ? normalizedColor.name : (color.name || `Color ${color.id}`)
+        };
+      }),
       guardConfig: {
         pixelsPerBatch: 10, // Configuración por defecto de Guard
         minChargesToWait: 20,
@@ -161,16 +167,26 @@ export function saveProgress(filename = null) {
         protectionEnabled: imageState.protectionEnabled,
         paintPattern: imageState.paintPattern
       },
-      // Filtrar solo los datos serializables de los colores (sin elementos DOM)
-      colors: imageState.availableColors.map(color => ({
-        id: color.id,
-        r: color.r,
-        g: color.g,
-        b: color.b
-      })),
-      remainingPixels: imageState.remainingPixels || [],
+      // Filtrar solo los datos serializables de los colores (sin elementos DOM) y normalizarlos
+      colors: imageState.availableColors.map(color => {
+        const normalizedColor = ColorUtils.normalizeColor(color);
+        return {
+          id: normalizedColor ? normalizedColor.id : color.id,
+          r: normalizedColor ? normalizedColor.r : color.r,
+          g: normalizedColor ? normalizedColor.g : color.g,
+          b: normalizedColor ? normalizedColor.b : color.b,
+          name: normalizedColor ? normalizedColor.name : (color.name || `Color ${color.id}`)
+        };
+      }),
+      remainingPixels: imageState.remainingPixels ? imageState.remainingPixels.map(pixel => ({
+        ...pixel,
+        color: ColorUtils.normalizeColor(pixel.color) || pixel.color // Normalizar colores de píxeles
+      })) : [],
       // Nueva información v2.0 para protección
-      drawnPixels: Array.from(imageState.drawnPixelsMap.values()),
+      drawnPixels: Array.from(imageState.drawnPixelsMap.values()).map(pixel => ({
+        ...pixel,
+        color: ColorUtils.normalizeColor(pixel.color) || pixel.color // Normalizar colores dibujados
+      })),
       protection: {
         enabled: imageState.protectionEnabled,
         lastCheck: imageState.lastProtectionCheck

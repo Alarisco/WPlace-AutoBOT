@@ -91,19 +91,35 @@ export class ImageProcessor {
         // para permitir el uso del color blanco (ID 5) en las imágenes
         
         // Encontrar el color más cercano usando algoritmo LAB avanzado
-        const closestColor = ColorUtils.findClosestPaletteColor(r, g, b, availableColors, {
-          useLegacyRgb: false, // Usar algoritmo LAB
-          whiteThreshold: 240
-        });
+        // SOLO entre colores disponibles para el usuario
+        const closestColor = ColorUtils.mapToPaletteColor(r, g, b, availableColors);
         
         if (closestColor) {
+          // Verificar que el color está realmente disponible
+          if (!ColorUtils.isColorAvailable(closestColor, availableColors)) {
+            log(`⚠️ Color ${closestColor.name} (ID: ${closestColor.id}) no está disponible, saltando píxel`);
+            continue;
+          }
+          
+          // Normalizar el color antes de agregarlo
+          const normalizedColor = ColorUtils.normalizeColor(closestColor);
+          
           processedPixels.push({
             x,
             y,
             originalColor: { r, g, b, alpha },
-            targetColor: closestColor
+            targetColor: normalizedColor || closestColor
           });
           validPixelCount++;
+          
+          // Log para debugging crítico
+          if (config.debugColors) {
+            log(`🎨 Píxel (${x},${y}): RGB(${r},${g},${b}) → ${normalizedColor.name} (ID: ${normalizedColor.id})`);
+          }
+        } else {
+          if (config.debugColors) {
+            log(`❌ No se pudo mapear píxel (${x},${y}) RGB(${r},${g},${b}) a ningún color disponible`);
+          }
         }
       }
     }
@@ -156,7 +172,7 @@ export function generatePixelQueue(imageData, startPosition, tileX, tileY) {
         localY: globalY,
         tileX: tileX,
         tileY: tileY,
-        color: pixelData.targetColor,
+        color: ColorUtils.normalizeColor(pixelData.targetColor) || pixelData.targetColor,
         originalColor: pixelData.originalColor
       });
     }
@@ -172,20 +188,20 @@ export function detectAvailableColors() {
   // Buscar elementos de color usando el selector del original
   const colorElements = document.querySelectorAll('[id^="color-"]');
   const colors = [];
+  const unavailableColors = [];
   
   for (const element of colorElements) {
-    // Filtrar elementos que tienen SVG (probablemente iconos de bloqueo)
-    if (element.querySelector('svg')) {
-      continue;
-    }
-    
     const idStr = element.id.replace('color-', '');
     const id = parseInt(idStr);
     
-    // Filtrar solo el color 0 (mantener el color blanco ID 5 disponible)
+    // Filtrar solo el color 0 (transparente)
     if (id === 0) {
       continue;
     }
+    
+    // Verificar si el color está bloqueado (tiene SVG de candado)
+    const hasSvg = element.querySelector('svg');
+    const isLocked = hasSvg !== null;
     
     // Obtener color RGB del style
     const backgroundStyle = element.style.backgroundColor;
@@ -198,17 +214,37 @@ export function detectAvailableColors() {
           b: parseInt(rgbMatch[2])
         };
         
-        colors.push({
+        // Obtener información de la paleta oficial
+        const paletteColor = ColorUtils.findColorByRGB(rgb.r, rgb.g, rgb.b);
+        const colorName = paletteColor ? paletteColor.name : ColorUtils.getColorNameById(id);
+        
+        const colorInfo = {
           id,
           element,
-          ...rgb
-        });
+          r: rgb.r,
+          g: rgb.g,
+          b: rgb.b,
+          name: colorName,
+          isLocked
+        };
         
-        log(`Color detectado: id=${id}, rgb(${rgb.r},${rgb.g},${rgb.b})`);
+        if (isLocked) {
+          unavailableColors.push(colorInfo);
+          log(`❌ Color bloqueado: id=${id}, ${colorName}, rgb(${rgb.r},${rgb.g},${rgb.b})`);
+        } else {
+          colors.push(colorInfo);
+          log(`✅ Color disponible: id=${id}, ${colorName}, rgb(${rgb.r},${rgb.g},${rgb.b})`);
+        }
       }
     }
   }
   
-  log(`✅ ${colors.length} colores disponibles detectados`);
+  log(`🎨 Detección completa: ${colors.length} colores disponibles, ${unavailableColors.length} bloqueados`);
+  log(`📋 Colores disponibles: ${colors.map(c => c.name).join(', ')}`);
+  
+  if (unavailableColors.length > 0) {
+    log(`🔒 Colores bloqueados: ${unavailableColors.map(c => c.name).join(', ')}`);
+  }
+  
   return colors;
 }

@@ -9,6 +9,7 @@ export const IMAGE_DEFAULTS = {
   TILE_SIZE: 3000,
   PIXELS_PER_BATCH: 20,
   CHARGE_REGEN_MS: 30000,
+  DEBUG_COLORS: false, // Activar logging detallado de colores
   THEME: {
     primary: '#000000',
     secondary: '#111111',
@@ -89,5 +90,6 @@ export const imageState = {
   smartVerification: true, // Verificación inteligente de píxeles (omitir píxeles ya correctos)
   paintPattern: 'linear_start', // Patrón de pintado predeterminado
   drawnPixelsMap: new Map(), // Mapa de píxeles ya dibujados para protección
-  lastProtectionCheck: 0 // Timestamp de última verificación de protección
+  lastProtectionCheck: 0, // Timestamp de última verificación de protección
+  debugColors: IMAGE_DEFAULTS.DEBUG_COLORS // Activar debugging de colores
 };

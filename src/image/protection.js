@@ -99,15 +99,22 @@ export async function analyzeDrawnPixels(paintedPixelsList) {
       
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
+      
+      // Calcular la escala del tile para el análisis
+      const scaleX = canvas.width / 1000;
+      const scaleY = canvas.height / 1000;
 
       // Verificar cada píxel pintado en este tile
       for (const pixel of tilePixels) {
         const { localX, localY } = pixel;
         
-        if (localX >= 0 && localX < canvas.width && 
-            localY >= 0 && localY < canvas.height) {
+        // Convertir coordenadas de celda a coordenadas de imagen
+        const imgX = Math.min(canvas.width - 1, Math.max(0, Math.floor(localX * scaleX + scaleX / 2)));
+        const imgY = Math.min(canvas.height - 1, Math.max(0, Math.floor(localY * scaleY + scaleY / 2)));
+        
+        if (imgX >= 0 && imgX < canvas.width && imgY >= 0 && imgY < canvas.height) {
           
-          const pixelIndex = (localY * canvas.width + localX) * 4;
+          const pixelIndex = (imgY * canvas.width + imgX) * 4;
           const r = data[pixelIndex];
           const g = data[pixelIndex + 1];
           const b = data[pixelIndex + 2];
@@ -193,15 +200,22 @@ export async function detectChangesInDrawnArea(paintedPixelsList) {
       
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
+      
+      // Calcular la escala del tile para la protección
+      const scaleX = canvas.width / 1000;
+      const scaleY = canvas.height / 1000;
 
       // Verificar cada píxel pintado en este tile
       for (const pixel of tilePixels) {
         const { localX, localY } = pixel;
         
-        if (localX >= 0 && localX < canvas.width && 
-            localY >= 0 && localY < canvas.height) {
+        // Convertir coordenadas de celda a coordenadas de imagen
+        const imgX = Math.min(canvas.width - 1, Math.max(0, Math.floor(localX * scaleX + scaleX / 2)));
+        const imgY = Math.min(canvas.height - 1, Math.max(0, Math.floor(localY * scaleY + scaleY / 2)));
+        
+        if (imgX >= 0 && imgX < canvas.width && imgY >= 0 && imgY < canvas.height) {
           
-          const pixelIndex = (localY * canvas.width + localX) * 4;
+          const pixelIndex = (imgY * canvas.width + imgX) * 4;
           const currentR = data[pixelIndex];
           const currentG = data[pixelIndex + 1];
           const currentB = data[pixelIndex + 2];

@@ -1,4 +1,5 @@
 import { log } from "../core/logger.js";
+import { COLOR_MAP } from "./palette.js";
 
 /**
  * Utilidades avanzadas para manejo de colores
@@ -6,6 +7,289 @@ import { log } from "../core/logger.js";
  */
 export class ColorUtils {
   
+  /**
+   * Normaliza un objeto color para asegurar estructura consistente
+   * @param {Object} colorObj - Objeto color en cualquier formato
+   * @returns {Object} Color normalizado con estructura {id, r, g, b, name}
+   */
+  static normalizeColor(colorObj) {
+    if (!colorObj) return null;
+    
+    // Si el color ya tiene la estructura correcta
+    if (colorObj.id !== undefined && colorObj.r !== undefined && 
+        colorObj.g !== undefined && colorObj.b !== undefined) {
+      return {
+        id: colorObj.id,
+        r: colorObj.r,
+        g: colorObj.g,
+        b: colorObj.b,
+        name: colorObj.name || ColorUtils.getColorNameById(colorObj.id)
+      };
+    }
+    
+    // Si tiene estructura anidada {rgb: {r, g, b}, id: x}
+    if (colorObj.rgb && colorObj.id !== undefined) {
+      return {
+        id: colorObj.id,
+        r: colorObj.rgb.r,
+        g: colorObj.rgb.g,
+        b: colorObj.rgb.b,
+        name: colorObj.name || ColorUtils.getColorNameById(colorObj.id)
+      };
+    }
+    
+    // Si solo tiene RGB sin ID, intentar encontrar el ID por RGB
+    if (colorObj.r !== undefined && colorObj.g !== undefined && colorObj.b !== undefined) {
+      const foundColor = ColorUtils.findColorByRGB(colorObj.r, colorObj.g, colorObj.b);
+      if (foundColor) {
+        return {
+          id: foundColor.id,
+          r: colorObj.r,
+          g: colorObj.g,
+          b: colorObj.b,
+          name: foundColor.name
+        };
+      }
+      // Si no se encuentra, crear estructura sin ID
+      return {
+        id: null,
+        r: colorObj.r,
+        g: colorObj.g,
+        b: colorObj.b,
+        name: `RGB(${colorObj.r},${colorObj.g},${colorObj.b})`
+      };
+    }
+    
+    log('⚠️ Color con estructura desconocida:', colorObj);
+    return null;
+  }
+  
+  /**
+   * Encuentra un color de la paleta oficial por sus valores RGB
+   * @param {number} r - Componente rojo
+   * @param {number} g - Componente verde
+   * @param {number} b - Componente azul
+   * @returns {Object|null} Color de la paleta o null
+   */
+  static findColorByRGB(r, g, b) {
+    for (const color of Object.values(COLOR_MAP)) {
+      if (color.rgb && color.rgb.r === r && color.rgb.g === g && color.rgb.b === b) {
+        return {
+          id: color.id,
+          r: color.rgb.r,
+          g: color.rgb.g,
+          b: color.rgb.b,
+          name: color.name
+        };
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Obtiene el nombre de un color por su ID
+   * @param {number} id - ID del color
+   * @returns {string} Nombre del color
+   */
+  static getColorNameById(id) {
+    for (const color of Object.values(COLOR_MAP)) {
+      if (color.id === id) {
+        return color.name;
+      }
+    }
+    return `Color ${id}`;
+  }
+  
+  /**
+   * Convierte un color normalizado a la paleta oficial de WPlace
+   * SOLO usando colores disponibles para el usuario
+   * @param {number} r - Componente rojo
+   * @param {number} g - Componente verde
+   * @param {number} b - Componente azul
+   * @param {Array} availableColors - Colores disponibles (filtrados por usuario)
+   * @returns {Object|null} Color más cercano de la paleta DISPONIBLE
+   */
+  static mapToPaletteColor(r, g, b, availableColors = []) {
+    // CRÍTICO: Solo trabajar con colores disponibles si están definidos
+    if (availableColors.length === 0) {
+      log('⚠️ No hay colores disponibles definidos para mapear');
+      return null;
+    }
+    
+    // Primero, intentar encontrar coincidencia exacta en colores disponibles
+    const exactMatch = availableColors.find(color => {
+      const normalized = ColorUtils.normalizeColor(color);
+      return normalized && normalized.r === r && normalized.g === g && normalized.b === b;
+    });
+    
+    if (exactMatch) {
+      const normalized = ColorUtils.normalizeColor(exactMatch);
+      log(`🎯 Coincidencia exacta encontrada: ${normalized.name} (ID: ${normalized.id})`);
+      return normalized;
+    }
+    
+    // Si no hay coincidencia exacta, encontrar el más cercano SOLO entre disponibles
+    const normalizedAvailable = availableColors
+      .map(c => ColorUtils.normalizeColor(c))
+      .filter(c => c && c.id !== null);
+    
+    if (normalizedAvailable.length === 0) {
+      log('⚠️ No hay colores disponibles válidos para mapear');
+      return null;
+    }
+    
+    const closestColor = ColorUtils.findClosestPaletteColor(r, g, b, normalizedAvailable);
+    if (closestColor) {
+      log(`🎨 Color más cercano (disponible): RGB(${r},${g},${b}) → ${closestColor.name} (ID: ${closestColor.id})`);
+    } else {
+      log(`❌ No se pudo mapear RGB(${r},${g},${b}) a ningún color disponible`);
+    }
+    
+    return closestColor;
+  }
+  
+  /**
+   * Valida que un color esté disponible en la lista de colores del usuario
+   * @param {Object} color - Color a validar
+   * @param {Array} availableColors - Lista de colores disponibles para el usuario
+   * @returns {boolean} True si el color está disponible
+   */
+  static isColorAvailable(color, availableColors) {
+    if (!color || !availableColors || availableColors.length === 0) {
+      return false;
+    }
+    
+    const normalizedColor = ColorUtils.normalizeColor(color);
+    if (!normalizedColor || normalizedColor.id === null) {
+      return false;
+    }
+    
+    return availableColors.some(availableColor => {
+      const normalizedAvailable = ColorUtils.normalizeColor(availableColor);
+      return normalizedAvailable && normalizedAvailable.id === normalizedColor.id;
+    });
+  }
+  
+  /**
+   * Filtra una lista de colores para incluir solo los disponibles
+   * @param {Array} colors - Lista de colores a filtrar
+   * @param {Array} availableColors - Lista de colores disponibles para el usuario
+   * @returns {Array} Lista filtrada de colores disponibles
+   * @returns {Array} Lista filtrada de colores disponibles
+   */
+  static filterAvailableColors(colors, availableColors) {
+    if (!colors || !availableColors) {
+      return [];
+    }
+    
+    return colors.filter(color => ColorUtils.isColorAvailable(color, availableColors));
+  }
+  
+  /**
+   * Obtiene información detallada de un color para debugging
+   * @param {Object} color - Color a analizar
+   * @returns {Object} Información detallada del color
+   */
+  static getColorDebugInfo(color) {
+    const normalized = ColorUtils.normalizeColor(color);
+    const paletteInfo = normalized ? ColorUtils.findColorByRGB(normalized.r, normalized.g, normalized.b) : null;
+    
+    return {
+      original: color,
+      normalized: normalized,
+      paletteMatch: paletteInfo,
+      isValid: normalized !== null,
+      hasValidId: normalized && normalized.id !== null,
+      inOfficialPalette: paletteInfo !== null
+    };
+  }
+  
+  /**
+   * Crea un conjunto de colores permitidos en formato Blue Marble (r,g,b como string)
+   * @param {Array} availableColors - Lista de colores disponibles
+   * @returns {Set} Conjunto de colores permitidos como strings "r,g,b"
+   */
+  static createAllowedColorsSet(availableColors) {
+    const allowedSet = new Set();
+    
+    if (!availableColors || availableColors.length === 0) {
+      return allowedSet;
+    }
+    
+    for (const color of availableColors) {
+      const normalized = ColorUtils.normalizeColor(color);
+      if (normalized && normalized.r !== undefined && normalized.g !== undefined && normalized.b !== undefined) {
+        const colorKey = `${normalized.r},${normalized.g},${normalized.b}`;
+        allowedSet.add(colorKey);
+      }
+    }
+    
+    log(`🎨 Conjunto de colores permitidos creado: ${allowedSet.size} colores`);
+    return allowedSet;
+  }
+  
+  /**
+   * Verifica si un píxel del canvas coincide con un color objetivo usando lógica Blue Marble
+   * @param {number} canvasR - Rojo del canvas
+   * @param {number} canvasG - Verde del canvas  
+   * @param {number} canvasB - Azul del canvas
+   * @param {Object} targetColor - Color objetivo normalizado
+   * @param {Set} allowedColorsSet - Conjunto de colores permitidos
+   * @param {Array} availableColors - Lista de colores disponibles para fallback
+   * @returns {Object} Resultado de la verificación
+   */
+  static verifyPixelMatch(canvasR, canvasG, canvasB, targetColor, allowedColorsSet, availableColors) {
+    // Verificar color objetivo válido
+    if (!targetColor || targetColor.r === undefined) {
+      return { 
+        isCorrect: false, 
+        reason: 'Color objetivo inválido',
+        canvasColor: null,
+        targetColor: targetColor 
+      };
+    }
+    
+    // 1. Verificación exacta del color del canvas (como Blue Marble)
+    const canvasColorKey = `${canvasR},${canvasG},${canvasB}`;
+    let canvasColorInPalette = null;
+    let isCanvasColorValid = allowedColorsSet.has(canvasColorKey);
+    
+    if (isCanvasColorValid) {
+      // Color del canvas está en la paleta oficial
+      canvasColorInPalette = ColorUtils.findColorByRGB(canvasR, canvasG, canvasB);
+    } else if (availableColors && availableColors.length > 0) {
+      // Fallback: mapear color del canvas a paleta usando LAB (como Blue Marble)
+      canvasColorInPalette = ColorUtils.mapToPaletteColor(canvasR, canvasG, canvasB, availableColors);
+      isCanvasColorValid = canvasColorInPalette !== null;
+    }
+    
+    // 2. Comparación final
+    let isCorrect = false;
+    let reason = '';
+    
+    if (canvasColorInPalette && targetColor.id !== null) {
+      // Comparar por ID (más preciso)
+      isCorrect = canvasColorInPalette.id === targetColor.id;
+      reason = isCorrect ? 
+        `ID match: ${canvasColorInPalette.id} (${canvasColorInPalette.name})` :
+        `ID mismatch: canvas=${canvasColorInPalette.id} vs target=${targetColor.id}`;
+    } else {
+      // Fallback a comparación RGB exacta
+      isCorrect = canvasR === targetColor.r && canvasG === targetColor.g && canvasB === targetColor.b;
+      reason = isCorrect ? 
+        `RGB exact match` :
+        `RGB mismatch: canvas(${canvasR},${canvasG},${canvasB}) vs target(${targetColor.r},${targetColor.g},${targetColor.b})`;
+    }
+    
+    return {
+      isCorrect,
+      reason,
+      canvasColor: canvasColorInPalette,
+      targetColor: targetColor,
+      usedIdComparison: canvasColorInPalette && targetColor.id !== null
+    };
+  }
+
   /**
    * Convierte RGB a espacio de color LAB
    * @param {number} r - Componente rojo (0-255)

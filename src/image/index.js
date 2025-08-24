@@ -3,6 +3,7 @@ import { imageState, IMAGE_DEFAULTS } from "./config.js";
 import { BlueMarblelImageProcessor, detectAvailableColors } from "./blue-marble-processor.js";
 import { processImage, stopPainting } from "./painter.js";
 import { saveProgress, loadProgress, clearProgress, getProgressInfo } from "./save-load.js";
+import { ColorUtils } from "./color-utils.js";
 import { createImageUI, showConfirmDialog } from "./ui.js";
 import { getSession } from "../core/wplace-api.js";
 import { initializeLanguage, getSection, t, getCurrentLanguage } from "../locales/index.js";
@@ -106,6 +107,22 @@ export async function runImage() {
         return false;
       }
       
+      // CRÍTICO: Validar que los colores detectados están en la paleta oficial
+      const validColors = colors.filter(color => {
+        const debugInfo = ColorUtils.getColorDebugInfo(color);
+        if (!debugInfo.inOfficialPalette) {
+          log(`❌ Color detectado no está en la paleta oficial: ID=${color.id}, RGB(${color.r},${color.g},${color.b})`);
+          return false;
+        }
+        return true;
+      });
+      
+      if (validColors.length !== colors.length) {
+        log(`⚠️ Filtrados ${colors.length - validColors.length} colores no válidos`);
+      }
+      
+      log(`🎨 Colores validados: ${validColors.map(c => `${c.name} (ID: ${c.id})`).join(', ')}`);
+      
       // Obtener información del usuario
       const sessionInfo = await getSession();
       let userInfo = null;
@@ -124,15 +141,15 @@ export async function runImage() {
         log('⚠️ No se pudo obtener información del usuario');
       }
       
-      imageState.availableColors = colors;
+      imageState.availableColors = validColors; // Usar solo colores validados
       imageState.colorsChecked = true;
       
-      ui.setStatus(t('image.colorsFound', { count: colors.length }), 'success');
+      ui.setStatus(t('image.colorsFound', { count: validColors.length }), 'success');
       ui.updateProgress(0, 0, userInfo);
       
       // Solo mostrar log una vez (evitar duplicado en auto-inicio)
       if (!isAutoInit) {
-        log(`✅ ${colors.length} colores disponibles detectados`);
+        log(`✅ ${validColors.length} colores válidos detectados`);
       }
       
       // Marcar como inicializado exitosamente para deshabilitar el botón
